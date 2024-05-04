@@ -1,0 +1,669 @@
+---
+title: "08_24_2023_EDA_NY_HIV"
+author: "Valerie Espinosa"
+date: "2023-08-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Exploratory 
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(leaflet)
+library(tidyverse)
+library(sf)
+#install.packages("remotes")
+remotes::install_github("mfherman/nycgeo")
+library(igraph)
+library(remotes)
+library(nycgeo)
+library(ggforce)
+library(sf)
+library(readxl)
+library(viridis)
+#install.packages("reshape2")
+library(reshape2)
+library(spdep)
+#install.packages("sandwich")
+#install.packages("msm")
+library(sandwich)
+library(msm)
+```
+
+```{r data,warning=FALSE, message=FALSE}
+NY_HIV <- read_csv("HIV_Annual_Report.csv")
+```
+
+```{r zipcodes}
+id = c(rep(101,2),rep(102,4),rep(103,3),rep(104,6),rep(105,3),rep(106,3),rep(107,4),
+  rep(201,2),rep(202,5),rep(203,5),rep(204,2),rep(205,2),rep(206,4),rep(207,4),rep(208,3),rep(209,3),rep(210,4),rep(211,3),
+  rep(301,5),rep(302,5), rep(303,2), rep(304,3),rep(305,4),rep(306,6),rep(307,4),rep(308,3),rep(309,3),rep(310,6),
+  rep(401,6),rep(402,7),rep(403,7),rep(404,4),rep(405,4),rep(406,3),rep(407,8),rep(408,7),rep(409,9),rep(410,6),
+  rep(501,3),rep(502,3),rep(503,1),rep(504,5))
+
+id = as.character(id)
+
+zipcode = c(10463, 10471,
+            10466, 10469, 10470, 10475,
+            10458, 10467, 10468,
+            10461, 10462, 10464, 10465, 10472, 10473,
+            10453, 10457, 10460,
+            10451, 10452, 10456,
+            10454, 10455, 10459, 10474,
+            11211, 11222,
+            11201, 11205, 11215, 11217, 11231,
+            11213, 11212, 11216, 11233, 11238,
+            11207, 11208,
+            11220, 11232,
+            11204, 11218, 11219, 11230,
+            11203, 11210, 11225, 11226,
+            11234, 11236, 11239,
+            11209, 11214, 11228,
+            11223, 11224, 11229, 11235,
+            11206, 11221, 11237,
+            10031, 10032, 10033, 10034, 10040,
+            10026, 10027, 10030, 10037, 10039,
+            10029, 10035,
+            10023, 10024, 10025,
+            10021, 10028, 10044, 10128,
+            10001, 10011, 10018, 10019, 10020, 10036,
+            10010, 10016, 10017, 10022,
+            10012, 10013, 10014,
+            10002, 10003, 10009,
+            10004, 10005, 10006, 10007, 10038, 10280,
+            11101, 11102, 11103, 11104, 11105, 11106,
+            11368, 11369, 11370, 11372, 11373, 11377, 11378,
+            11354, 11355, 11356, 11357, 11358, 11359, 11360,
+            11361, 11362, 11363, 11364,
+            11374, 11375, 11379, 11385,
+            11365, 11366, 11367,
+            11414, 11415, 11416, 11417, 11418, 11419, 11420, 11421,
+            11412, 11423, 11432, 11433, 11434, 11435, 11436,
+            11004, 11005, 11411, 11413, 11422, 11426, 11427, 11428, 11429,
+            11691, 11692, 11693, 11694, 11695, 11697,
+            10302, 10303, 10310,
+            10301, 10304, 10305,
+            10314,
+            10306, 10307, 10308, 10309, 10312)
+
+zipcode = as.character(zipcode)
+
+zipcode_uhf = as.data.frame(cbind(id,zipcode))
+
+  
+```
+
+
+```{r}
+community = st_read("UHF42.shp")
+##find ryanwhite only NY
+```
+
+
+```{r seperate parks and lakes}
+# extract coordinates from shape
+#save coordinates to data frame
+test02 = as.data.frame(st_coordinates(community[[2]][[1]]))
+
+ggplot(data = test02, aes(X,Y)) +
+  geom_point()
+unique(test02$L2)
+
+#these are each group of shapes separated by L2 type
+testL1 = test02 %>% filter(L2 == 1)
+
+#give each list of coordinates a shape label id
+# use 504 + i because there are 504 already existing
+test_shape = test02 %>% group_by(L2) %>% mutate(id = 504 + as.numeric(cur_group_id()))
+
+#create vector of ids
+ids = unique(test_shape$id)
+#make the column into characters like the community sf
+test_shape$id = as.character(test_shape$id)
+
+#group coordinates lists to groups
+```
+
+```{r create sf for parks and lakes}
+dfs = test_shape %>%
+  group_by(id) %>%
+  group_map(~.x)
+
+errorid = max(community$id)
+
+for (i in 1:length(ids)){
+  if(i == 1){
+    placeholder = dfs[[i]]
+    trial01 = st_as_sf(as_tibble(placeholder),coords = c("X","Y"))
+    base = trial01 %>%
+      group_by(L2) %>%
+      summarise(geometry = st_combine(geometry)) %>%
+      st_cast("POLYGON") %>%
+      summarise(geometry = st_combine(geometry)) -> new_polygons 
+    base = base %>% mutate(id = i + as.numeric(errorid))
+  }
+  else{
+        placeholder2 = dfs[[i]]
+        trial02 = st_as_sf(as_tibble(placeholder2),coords = c("X","Y"))
+        part = trial02 %>%
+          group_by(L2) %>%
+          summarise(geometry = st_combine(geometry)) %>%
+          st_cast("POLYGON") %>%
+          summarise(geometry = st_combine(geometry)) -> new_polygons 
+        part = part %>% mutate(id = i + as.numeric(errorid))
+        base = rbind(base,part)
+  }
+}
+#switch columns
+base = base[,c(2,1)]
+#base currently has no crs so set it to be equal to community
+st_crs(base) = st_crs(community)
+
+```
+
+```{r join lake and original shape file}
+
+#trial = rbind(community,base)
+#community = community[-1,]
+community = rbind(community,base)
+```
+
+
+```{r}
+#get rid of 'all' rows
+reduced_ny_hiv = NY_HIV %>% filter(Borough != 'All' ,UHF != 'All', Gender == 'All', Age == 'All', Race != 'All', Race != 'Other/Unknown')
+
+#get unique UFH, 
+reduced_ny_hiv = reduced_ny_hiv %>% distinct(UHF, Year,Race,.keep_all = TRUE)
+
+id = c(105,103,106,107,101,102,104,203,209,206,208,210,202,205,207,204,201,211,302,306,303,307,308,310,309,305,304,301,404,403,406,408,401,405,410,409,407,402,501,504,502,503)
+
+UHF = unique(NY_HIV$UHF)
+UHF = UHF[-1]
+
+UHF_Assignment = as.data.frame(cbind(id,UHF))
+
+
+NY = left_join(reduced_ny_hiv,UHF_Assignment)
+#test
+#wow it worked
+NY_data = left_join(community,NY)
+
+#old line of code before adding seperate parks and lake locations
+#NY_data = left_join(community,NY)
+
+na.omit(NY_data)
+
+#add zipcodes
+NY_data = left_join(NY_data,zipcode_uhf)
+
+#make 0 id into Hispanic to avoid disappearing areas
+#ranges are for the separate parks
+NY_data$Race[c(1,3522:3539)] = "Latinx/Hispanic"
+NY_data$Year[c(1,3522:3539)] = "2021"
+ 
+NY_data_2020 = NY_data %>% filter(Race == "Latinx/Hispanic", Year == "2020")
+
+NY_data = NY_data %>% filter(Race == "Latinx/Hispanic", Year == "2021")
+  
+NY_data$`HIV Diagnosis Rate Difference` = NY_data$`HIV diagnosis rate` - NY_data_2020$`HIV diagnosis rate`
+
+NY_data = NY_data[,c(1:7,22,8:20)]
+
+
+NY_data[is.na(NY_data)] = 0
+```
+
+```{r, message=FALSE}
+#get hispanic populations per zipcode
+HispanicPop = read_csv("HispanicPop.csv")
+
+#Get individual zipcodes for new york state
+Hispanic = HispanicPop[-c(1:2),]
+
+Hispanic$NAME =  gsub("ZCTA5 ", "",Hispanic$NAME)
+
+colnames(Hispanic)[3] = "Total_Pop"  
+colnames(Hispanic)[2] = "zipcode" 
+
+#need to match existing zipcodes
+Hispanic = Hispanic[,c(2,3)]
+
+NY_data = left_join(NY_data,Hispanic)
+NY_data$Total_Pop[is.na(NY_data$Total_Pop)] <- 0
+NY_data$Total_Pop = as.numeric(NY_data$Total_Pop)
+
+```
+
+```{r }
+#plot population
+ggplot(data = NY_data) +
+  geom_sf(aes(fill = Total_Pop)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("Total Hispanic Population in New York City by Neighborhood")
+
+```
+
+```{r} 
+#condom program
+NYC_Condom= read_csv("NYC_Condom_Availability_Program_-_HIV_condom_distribution_locations.csv")
+colnames(NYC_Condom)[11] = "zipcode" 
+NYC_Condom$zipcode = as.character(NYC_Condom$zipcode)
+
+#count the number of participaitng programs per zipcode
+condoms = as.data.frame(table(NYC_Condom$zipcode, useNA = 'always'))
+colnames(condoms)[1] = "zipcode"
+colnames(condoms)[2] = "condom_program_count"
+
+#remove na and no available zipcode
+condoms = condoms[-c(1,88),]
+
+NY_data = left_join(NY_data,condoms)
+
+NY_data$condom_program_count[is.na(NY_data$condom_program_count)] = 0
+```
+
+
+```{r }
+#plot condoms
+ggplot(data = NY_data) +
+  geom_sf(aes(fill = condom_program_count)) +
+    scale_fill_viridis(option = "C") +
+  ggtitle("Condom Programs")
+
+```
+```{r}
+HIV_Testing_Locations<- read_csv("HIV_Testing_Locations.csv")
+
+Testing_sites = HIV_Testing_Locations$`Zip Code`[HIV_Testing_Locations$`Zip Code`%in%NY_data$zipcode] 
+
+testing_sites = as.data.frame(table(Testing_sites))
+colnames(testing_sites)[1] = "zipcode"
+colnames(testing_sites)[2] = "testing_site_count"
+NY_data = left_join(NY_data,testing_sites)
+
+NY_data$testing_site_count[is.na(NY_data$testing_site_count)] = 0
+
+```
+
+```{r}
+ggplot(data = NY_data) +
+  geom_sf(aes(fill = testing_site_count)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("STD clinics in New York City")
+```
+
+```{r}
+#plot count of condom program
+#everything in community that is not in ny_data
+#community$id[!(community$id %in% NY_data$id)]
+
+
+#everything in NY_data that is not in community
+#NY_data$id[!(NY_data$id %in% community$id)]
+
+
+
+#ggplot(data = NY_data) +
+#  geom_sf(aes(fill = condom_program_count)) +
+#  ggtitle("Condom Programs in New York")
+
+#filterin latin, there is 0 presence of latin in certain areas. such as
+#latin = NY_data %>% filter(Race == "Latinx/Hispanic")
+
+```
+
+```{r}
+
+plot1 = ggplot(data = NY_data) +
+  geom_sf(aes(fill = `HIV diagnosis rate`)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("HIV Diagnosis for Latinx/Hispanic in New York")
+
+
+```
+
+```{r check empty area}
+
+labels<-cbind(community,st_coordinates(st_centroid(community$geometry)))
+
+ggplot()+
+  geom_sf(data=community)+
+  scale_fill_viridis(option = "C") +
+  geom_text(data=labels,aes(label=id,x=X,y=Y),colour="black")
+
+#the area is actually not labeled, its literally central park lmao and the bottom gap is prospect park.
+```
+
+```{r Ryanwhite 01, warning=FALSE}
+#count the funding per zipcode
+Ryan_White_Clean_Data_2021 = read_excel("Ryan_White_Clean_Data_2021.xlsx")
+
+na.omit(Ryan_White_Clean_Data_2021)
+
+#remove specific zip code, -.* removes everything after hyphen
+Ryan_White_Clean_Data_2021['ZIP'] =
+gsub("-.*","",Ryan_White_Clean_Data_2021$ZIP)
+
+colnames(Ryan_White_Clean_Data_2021)[7] = "zipcode"
+
+
+colnames(Ryan_White_Clean_Data_2021)[3] = "Funding"
+Ryan_White_Clean_Data_2021$Funding =  gsub(", +", ",", Ryan_White_Clean_Data_2021$Funding)
+
+Ryan_White_Clean_Data_2021 = Ryan_White_Clean_Data_2021 %>% separate_rows("Funding", sep = ",") %>%
+  pivot_wider(names_from = "Funding", values_from = "Funding", values_fn = function(x) 1, values_fill = 0)
+
+
+`Part A` = aggregate(`Part A`~zipcode, Ryan_White_Clean_Data_2021,sum)
+`Part B` = aggregate(`Part B`~zipcode,Ryan_White_Clean_Data_2021,sum)
+`Part C` = aggregate(`Part C`~zipcode,Ryan_White_Clean_Data_2021,sum)
+
+funding = merge(`Part A`,`Part B`)
+funding = merge(funding,`Part C`)
+
+funding = as.data.frame(funding)
+
+NY_data = left_join(NY_data,funding)
+NY_data[is.na(NY_data)] = 0
+
+```
+```{r}
+#remove row 0
+NY_data = NY_data[-1,]
+
+#remove non-hiv death et and hiv related death
+NY_data = NY_data[,-c(19,20)]
+
+```
+
+
+```{r}
+
+cols <- c("Part A" = "red", "Part B" = "blue", "Part C" = "darkgreen", "Part D" = "orange")
+
+ggplot(data = NY_data) +
+  geom_sf(aes(fill = `Part A`)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("Funding for Part A 2021") +
+  theme_light()
+
+ggplot(data = NY_data) +
+  geom_sf(aes(fill = `Part B`)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("Funding for Part B in 2021")+
+  theme_light()
+
+ggplot(data = NY_data) +
+  geom_sf(aes(fill = `Part C`)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("Funding for Part C in 2021")+
+  theme_light()
+
+
+#i only 2021 crud. fix later
+```
+
+```{r}
+#library(spdep)
+#proximity matrix?
+
+#adj_shp = NY_data %>% select("HIV diagnosis rate", "geometry") 
+
+#boundaries need to be more than one point
+#nb <-poly2nb(adj_shp, queen=FALSE)
+
+#become weighted by rows
+#Wproximity.list <- nb2listw(nb,style="W")
+
+
+#plot(adj_shp)
+#plot(Wproximity.list,adj_shp$geometry)
+
+#find out where that dot is
+#break up the geometries for 0 and 
+
+#filter out 0 geometried from adjacency matricies
+# by row and it will probably be easier than removing/ merging the geometries by hand
+#good luck
+
+#figure out how to break 0 into individuals 
+
+```
+
+
+
+```{r }
+
+adj_shp = NY_data %>% select(`HIV Diagnosis Rate Difference`, geometry)
+
+
+#boundaries need to be more than one point
+nb <-poly2nb(adj_shp[2], queen=FALSE)
+
+#become weighted by rows
+Wproximity.list <- nb2listw(nb, zero.policy = TRUE)
+
+plot(Wproximity.list,adj_shp$geometry)
+
+I <- moran(adj_shp$`HIV Diagnosis Rate Difference`, Wproximity.list, length(nb), Szero(Wproximity.list))
+summary(I)
+
+moran.test(adj_shp$`HIV Diagnosis Rate Difference`,Wproximity.list, alternative="greater", zero.policy = TRUE)
+#there is definitely some clustering in this ho.
+```
+
+
+```{r}
+```
+
+```{r}
+#library(spdep)
+#install.packages("broom", type="binary")
+#library(CARBayes);library(CARBayesdata);library(CARBayesST)
+
+#proximity matrix?
+
+
+```
+
+```{r}
+##add all values
+ggplot(data = NY_data) +
+  geom_sf(aes(fill = `HIV Diagnosis Rate Difference`)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("HIV Diagnosis Rate Difference in Hispanic/Latinx in UHF Neighborhoods")
+
+```
+
+
+```{r}
+#i need to combine all data well and then construct model.
+
+#figure out way to validate
+#maybe split data to testing and training? use another year to predict? unsure.
+
+#interpret results, pretty plots etc.
+
+#write process
+
+#do poisson, mean of a poisson
+#
+```
+
+```{r}
+test = NY_data
+st_geometry(test) <-NULL
+#do not include zipcode column number
+corr_mat = cor(test[c(8,21:25)])
+melted_corr_mat <- melt(corr_mat)
+ggplot(data = melted_corr_mat, aes(x=Var1, y=Var2, fill=value)) + 
+  geom_tile( color = "gray") +
+  scale_fill_viridis(option = "C") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  ggtitle("Correlation Heatplot") +
+  xlab("") +
+  ylab("")
+  
+
+ggplot(test, aes(x =`HIV Diagnosis Rate Difference`, fill = ..x..)) +
+  geom_histogram()+
+  scale_fill_viridis(option = "C") +
+  ggtitle("Distribution of HIV Diagnosis Rate Difference")
+
+```
+
+```{r}
+library(spatialreg)
+library(gtsummary)
+#run a normal regression
+summary(m1 <- glm(`HIV Diagnosis Rate Difference` ~ condom_program_count+ `Part A` + `Part B` + `Part C` + testing_site_count, data=NY_data))
+summary(m1)
+```
+
+```{r}
+
+s = spautolm(formula =`HIV Diagnosis Rate Difference` ~ condom_program_count +`Part A` +`Part B` + `Part C` + testing_site_count,listw = Wproximity.list, family = "CAR", data = NY_data)
+summary(s)
+
+```
+
+```{r}
+
+cov.m1 <- vcovHC(m1, type="HC0")
+std.err <- sqrt(diag(cov.m1))
+r.est <- cbind(Estimate= coef(m1), "Robust SE" = std.err,
+"Pr(>|z|)" = 2 * pnorm(abs(coef(m1)/std.err), lower.tail=FALSE),
+LL = coef(m1) - 1.96 * std.err,
+UL = coef(m1) + 1.96 * std.err)
+
+r.est
+
+# p-value of Residual deviance goodness-of-fit test
+1 - pchisq(deviance(m1), df = m1$df.residual)
+
+# Pearson's goodness-of-fit
+Pearson <- sum((NY_data$`HIV diagnoses rate` - m1$fitted.values)^2 
+               / m1$fitted.values)
+Dispersion_value= 1 - pchisq(Pearson, df = 188)
+
+
+#use quasipoisson
+summary(m2 <- glm(`HIV diagnoses` ~ condom_program_count+ `Part A` + `Part B` + `Part C` + testing_site_count, family="quasipoisson", data=NY_data))
+
+
+lambdahat <-fitted(m1)
+par(mfrow=c(1,2), pty="s")
+plot(lambdahat,(NY_data$`HIV diagnosis rate`-lambdahat)^2,
+     xlab=expression(hat(lambda)), ylab=expression((y-hat(lambda))^2 ))
+plot(lambdahat, resid(m1,type="pearson"), 
+     xlab=expression(hat(lambda)), ylab="Pearson Residuals") 
+
+```
+
+
+```{r}
+plot(m1$fitted.values,m1$residuals)
+
+```
+
+```{r dev="pdf"}
+ggplot(community) +
+  geom_sf() + 
+  ggtitle("United Hospital Fund Neighborhoods") +
+  geom_text(data=labels,size = 1.2, aes(label=id,x=X,y=Y),colour="black") +
+  scale_colour_viridis(option = "C")
+```
+
+```{r}
+
+data = as.data.frame(NY_data$`HIV Diagnosis Rate Difference`[1:176])
+colnames(data) = "Change in HIV Diagnosis Rate"
+data$`Change in HIV Diagnosis Rate` = as.numeric(data$`Change in HIV Diagnosis Rate`)
+
+result_sw <- shapiro.test(data$`Change in HIV Diagnosis Rate`)
+p <- ggplot(data, aes(sample = `Change in HIV Diagnosis Rate`))
+p + stat_qq() + stat_qq_line() + ggtitle("QQ Plot for Difference in HIV ")+
+  geom_text(aes(x = -1.5, y = 26, label = paste("Shapiro-Wilks Test Statistic:",round(result_sw$statistic,6)))) + geom_text(aes(x = -1.4, y = 20, label = paste("Shapiro-Wilks Test P-value:",round(result_sw$p.value,6))))
+
+
+data1 = as.data.frame(NY_data$`HIV Diagnosis Rate Difference`[1:176])
+colnames(data1) = "log Change in HIV Diagnosis Rate"
+data1$`log Change in HIV Diagnosis Rate` = data1$`log Change in HIV Diagnosis Rate`
+
+data1$`log Change in HIV Diagnosis Rate` = log(data1$`log Change in HIV Diagnosis Rate`)
+data1$`Change in HIV Diagnosis Rate` = as.numeric(data1$`log Change in HIV Diagnosis Rate`)
+
+result_sw <- shapiro.test(data1$`log Change in HIV Diagnosis Rate`)
+p <- ggplot(data1, aes(sample = `log Change in HIV Diagnosis Rate`))
+p + stat_qq() + stat_qq_line() + ggtitle("QQ Plot for Sqrt of Difference in HIV Diagnosis")+
+  geom_text(aes(x = -1.5, y = 26, label = paste("Shapiro-Wilks Test Statistic:",round(result_sw$statistic,6)))) + geom_text(aes(x = -1.4, y = 20, label = paste("Shapiro-Wilks Test P-value:",round(result_sw$p.value,6))))
+
+```
+
+adding zipcodes
+```{r}
+library(readr)
+
+Income <- read_csv("ACSST5Y2021.S1901-Data.csv", 
+    skip = 1)
+View(ACSST5Y2021_S1901_Data)
+
+Income = Income[,1:3]
+
+Income$`Geographic Area Name`= gsub("^.{0,6}","", Income$`Geographic Area Name`)
+
+colnames(Income)[2] = "zipcode"
+colnames(Income)[3] = "Income" #per household
+Income = Income[,-1]
+
+trial = left_join(NY_data,Income)
+trial[is.na(trial)] = 0 
+```
+
+```{r}
+ggplot(data = trial) +
+  geom_sf(aes(fill = Income)) +
+  scale_fill_viridis(option = "C") +
+  ggtitle("HIV Diagnosis Rate Difference in Hispanic/Latinx in UHF Neighborhoods")
+
+```
+
+New tests
+```{r}
+#run a normal regression with difference
+summary(m2 <- glm(`HIV Diagnosis Rate Difference` ~ condom_program_count+ `Part A` + `Part B` + `Part C` + testing_site_count+ Income,data=trial))
+
+
+```
+
+
+```{r}
+# run spatial regression with difference
+s2 = spautolm(formula =`HIV Diagnosis Rate Difference` ~ condom_program_count +`Part A` +`Part B` + `Part C` + testing_site_count + Income,listw = Wproximity.list, family = "CAR", data = trial)
+
+summary(s2)
+```
+
+
+#check part and c
+#for every a there is part c
+#need to see the interactions between part a and c.
+#doa logical, are there any part c = 1 and part = a = 1
+#do a contigency table
+
+#standardize income
+
+#what is a quasi poisson and when would you use it
+#over dispersion?
+
+#to do: split box plots and see relationships between them
+#if there are not that many combinations maby do categorical 
+#be better if present or not
+#make the part funding 0 and 1's
+#read stat literature
