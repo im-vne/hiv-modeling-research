@@ -1,0 +1,199 @@
+---
+title: "Funding EDA"
+author: "Valerie"
+date: "2024-10-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r libraries, message=FALSE, error=FALSE}
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(ggfittext)
+library(tidyverse)
+library(sf)
+```
+
+```{r data}
+Funding  <- read_excel("HAB_Recipient_and_Subrecipient.xlsx")
+
+NY_Funding = Funding %>% filter(`State Name` == "New York")
+
+Services = as.data.frame(table(NY_Funding$`HAB Provider Type Description`))
+
+Services$Var1 = as.factor(Services$Var1)
+
+p = ggplot(data=Services, aes(x=Var1, y=Freq)) +
+  geom_bar(stat="identity") +
+  geom_fit_text(aes(label = Var1, y = 0),
+                reflow = TRUE, height = 10,
+                show.legend = FALSE) +
+  scale_y_continuous(oob = scales::oob_keep,
+                     limits = c(0, NA)) +
+  coord_cartesian(clip = "off") +
+  theme(axis.text.x = element_text(colour = "transparent", size = 6))
+
+p
+```
+
+
+```{r UHF}
+id = c(rep(101,2),rep(102,4),rep(103,3),rep(104,6),rep(105,3),rep(106,3),rep(107,4),
+  rep(201,2),rep(202,5),rep(203,5),rep(204,2),rep(205,2),rep(206,4),rep(207,4),rep(208,3),rep(209,3),rep(210,4),rep(211,3),
+  rep(301,5),rep(302,5), rep(303,2), rep(304,3),rep(305,4),rep(306,6),rep(307,4),rep(308,3),rep(309,3),rep(310,6),
+  rep(401,6),rep(402,7),rep(403,7),rep(404,4),rep(405,4),rep(406,3),rep(407,8),rep(408,7),rep(409,9),rep(410,6),
+  rep(501,3),rep(502,3),rep(503,1),rep(504,5))
+
+id = as.character(id)
+
+zipcode = c(10463, 10471,
+            10466, 10469, 10470, 10475,
+            10458, 10467, 10468,
+            10461, 10462, 10464, 10465, 10472, 10473,
+            10453, 10457, 10460,
+            10451, 10452, 10456,
+            10454, 10455, 10459, 10474,
+            11211, 11222,
+            11201, 11205, 11215, 11217, 11231,
+            11213, 11212, 11216, 11233, 11238,
+            11207, 11208,
+            11220, 11232,
+            11204, 11218, 11219, 11230,
+            11203, 11210, 11225, 11226,
+            11234, 11236, 11239,
+            11209, 11214, 11228,
+            11223, 11224, 11229, 11235,
+            11206, 11221, 11237,
+            10031, 10032, 10033, 10034, 10040,
+            10026, 10027, 10030, 10037, 10039,
+            10029, 10035,
+            10023, 10024, 10025,
+            10021, 10028, 10044, 10128,
+            10001, 10011, 10018, 10019, 10020, 10036,
+            10010, 10016, 10017, 10022,
+            10012, 10013, 10014,
+            10002, 10003, 10009,
+            10004, 10005, 10006, 10007, 10038, 10280,
+            11101, 11102, 11103, 11104, 11105, 11106,
+            11368, 11369, 11370, 11372, 11373, 11377, 11378,
+            11354, 11355, 11356, 11357, 11358, 11359, 11360,
+            11361, 11362, 11363, 11364,
+            11374, 11375, 11379, 11385,
+            11365, 11366, 11367,
+            11414, 11415, 11416, 11417, 11418, 11419, 11420, 11421,
+            11412, 11423, 11432, 11433, 11434, 11435, 11436,
+            11004, 11005, 11411, 11413, 11422, 11426, 11427, 11428, 11429,
+            11691, 11692, 11693, 11694, 11695, 11697,
+            10302, 10303, 10310,
+            10301, 10304, 10305,
+            10314,
+            10306, 10307, 10308, 10309, 10312)
+
+zipcode = as.character(zipcode)
+
+zipcode_uhf = as.data.frame(cbind(id,zipcode))
+```
+
+```{r geo}
+
+community = sf::st_read("UHF42.shp")
+
+ggplot(community) + geom_sf()
+
+##separate parks
+
+test02 = as.data.frame(st_coordinates(community[[2]][[1]]))
+
+ggplot(data = test02, aes(X,Y)) +
+  geom_point()
+unique(test02$L2)
+
+#these are each group of shapes separated by L2 type
+testL1 = test02 %>% filter(L2 == 1)
+
+#give each list of coordinates a shape label id
+# use 504 + i because there are 504 already existing
+test_shape = test02 %>% group_by(L2) %>% mutate(id = 504 + as.numeric(cur_group_id()))
+
+#create vector of ids
+ids = unique(test_shape$id)
+#make the column into characters like the community sf
+test_shape$id = as.character(test_shape$id)
+
+dfs = test_shape %>%
+  group_by(id) %>%
+  group_map(~.x)
+
+errorid = max(community$id)
+
+for (i in 1:length(ids)){
+  if(i == 1){
+    placeholder = dfs[[i]]
+    trial01 = st_as_sf(as_tibble(placeholder),coords = c("X","Y"))
+    base = trial01 %>%
+      group_by(L2) %>%
+      summarise(geometry = st_combine(geometry)) %>%
+      st_cast("POLYGON") %>%
+      summarise(geometry = st_combine(geometry)) -> new_polygons 
+    base = base %>% mutate(id = i + as.numeric(errorid))
+  }
+  else{
+        placeholder2 = dfs[[i]]
+        trial02 = st_as_sf(as_tibble(placeholder2),coords = c("X","Y"))
+        part = trial02 %>%
+          group_by(L2) %>%
+          summarise(geometry = st_combine(geometry)) %>%
+          st_cast("POLYGON") %>%
+          summarise(geometry = st_combine(geometry)) -> new_polygons 
+        part = part %>% mutate(id = i + as.numeric(errorid))
+        base = rbind(base,part)
+  }
+}
+#switch columns
+base = base[,c(2,1)]
+#base currently has no crs so set it to be equal to community
+st_crs(base) = st_crs(community)
+
+community = rbind(community,base)
+
+plot(community)
+```
+```{r data cleaning funding}
+NY_Funding$zipcode = NY_Funding$`Common Postal Code`
+
+Attempt_1 = left_join(NY_Funding,zipcode_uhf)
+
+Attempt_1 = Attempt_1 %>% drop_na(id)
+
+trial0 = Attempt_1 %>% select(id,zipcode,`RWHAP Funded Services`) 
+
+trial = left_join(community,trial0)
+trial
+
+```
+
+
+```{r}
+
+trial = separate_rows(trial, `RWHAP Funded Services`, sep = "; ")
+Services = unique(trial$`RWHAP Funded Services`)
+
+counts = trial %>% group_by(id, zipcode, `RWHAP Funded Services`)%>% summarise(total_count = n())
+
+
+servplot = function(x,y,z){
+  ggplot(data = counts) + 
+     geom_sf(fill = `RWHAP Funded Services`)
+  
+}
+  
+
+
+map(Services, ~servplot("","",.x))
+```
