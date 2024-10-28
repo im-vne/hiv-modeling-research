@@ -44,13 +44,13 @@ p
 
 
 ```{r UHF}
-id = c(rep(101,2),rep(102,4),rep(103,3),rep(104,6),rep(105,3),rep(106,3),rep(107,4),
+UHFCODE = c(rep(101,2),rep(102,4),rep(103,3),rep(104,6),rep(105,3),rep(106,3),rep(107,4),
   rep(201,2),rep(202,5),rep(203,5),rep(204,2),rep(205,2),rep(206,4),rep(207,4),rep(208,3),rep(209,3),rep(210,4),rep(211,3),
   rep(301,5),rep(302,5), rep(303,2), rep(304,3),rep(305,4),rep(306,6),rep(307,4),rep(308,3),rep(309,3),rep(310,6),
   rep(401,6),rep(402,7),rep(403,7),rep(404,4),rep(405,4),rep(406,3),rep(407,8),rep(408,7),rep(409,9),rep(410,6),
   rep(501,3),rep(502,3),rep(503,1),rep(504,5))
 
-id = as.character(id)
+UHFCODE = as.character(UHFCODE)
 
 zipcode = c(10463, 10471,
             10466, 10469, 10470, 10475,
@@ -97,41 +97,60 @@ zipcode = c(10463, 10471,
 
 zipcode = as.character(zipcode)
 
-zipcode_uhf = as.data.frame(cbind(id,zipcode))
+zipcode_uhf = as.data.frame(cbind(UHFCODE,zipcode))
 ```
 
 ```{r geo}
+##upload UHF multipolygons 
 
-community = sf::st_read("UHF42.shp")
+community = sf::st_read("UHF/UHF_42_DOHMH_2009.shp")
+##make sure the uhf codes are characters
+community$UHFCODE = as.character(community$UHFCODE)
+#plot communities to make sure everything was right
+plot(community)
 
-ggplot(community) + geom_sf()
 
 ##separate parks
+##find parks by plotting
+plot(community[[7]][[1]])
 
-test02 = as.data.frame(st_coordinates(community[[2]][[1]]))
 
+```
+
+
+I need to give the indivisual parks/uninhabitated areas their own ids instead of having them all be 0 or NA
+```{r}
+## get the latitude and longitude of the parks
+test02 = as.data.frame(st_coordinates(community[[7]][[1]])) 
+
+
+#plot to make sure we got the right areas
 ggplot(data = test02, aes(X,Y)) +
   geom_point()
 unique(test02$L2)
 
-#these are each group of shapes separated by L2 type
+#these are each group of shapes separated by L2 type ; this is just like park 1, park 2 etc..
 testL1 = test02 %>% filter(L2 == 1)
 
-#give each list of coordinates a shape label id
+#give each list of coordinates a shape label uhfcode
 # use 504 + i because there are 504 already existing
-test_shape = test02 %>% group_by(L2) %>% mutate(id = 504 + as.numeric(cur_group_id()))
+test_shape = test02 %>% group_by(L2) %>% mutate(UHFCODE = 504 + as.numeric(cur_group_id()))
 
 #create vector of ids
-ids = unique(test_shape$id)
-#make the column into characters like the community sf
-test_shape$id = as.character(test_shape$id)
+ids = unique(test_shape$UHFCODE)
 
+#make the column into characters like the community sf
+test_shape$UHFCODE = as.character(test_shape$UHFCODE)
+
+#combine the different L2's back into list format
 dfs = test_shape %>%
-  group_by(id) %>%
+  group_by(UHFCODE) %>%
   group_map(~.x)
 
-errorid = max(community$id)
 
+errorid = max(community$UHFCODE)
+
+#This is udes to create
 for (i in 1:length(ids)){
   if(i == 1){
     placeholder = dfs[[i]]
@@ -141,7 +160,7 @@ for (i in 1:length(ids)){
       summarise(geometry = st_combine(geometry)) %>%
       st_cast("POLYGON") %>%
       summarise(geometry = st_combine(geometry)) -> new_polygons 
-    base = base %>% mutate(id = i + as.numeric(errorid))
+    base = base %>% mutate(UHFCODE = i + as.numeric(errorid))
   }
   else{
         placeholder2 = dfs[[i]]
@@ -151,49 +170,108 @@ for (i in 1:length(ids)){
           summarise(geometry = st_combine(geometry)) %>%
           st_cast("POLYGON") %>%
           summarise(geometry = st_combine(geometry)) -> new_polygons 
-        part = part %>% mutate(id = i + as.numeric(errorid))
+        part = part %>% mutate(UHFCODE = i + as.numeric(errorid))
         base = rbind(base,part)
   }
 }
 #switch columns
 base = base[,c(2,1)]
+
 #base currently has no crs so set it to be equal to community
 st_crs(base) = st_crs(community)
 
-community = rbind(community,base)
+community_trial = community %>% select(UHFCODE, geometry) 
+community_trial = rbind(community_trial,base)
+geo_community = community_trial[-1,]
 
-plot(community)
+plot(geo_community)
 ```
+
+
 ```{r data cleaning funding}
+#get the zip codes for the funding
 NY_Funding$zipcode = NY_Funding$`Common Postal Code`
 
-Attempt_1 = left_join(NY_Funding,zipcode_uhf)
+NY_Funding =  replace(NY_Funding, is.na(NY_Funding), "Unknown")
 
-Attempt_1 = Attempt_1 %>% drop_na(id)
+#join via zipcode
+Attempt_1 = left_join(zipcode_uhf,NY_Funding)
 
-trial0 = Attempt_1 %>% select(id,zipcode,`RWHAP Funded Services`) 
+#drop the na's
+#Attempt_1 = Attempt_1 %>% drop_na(UHFCODE)
 
-trial = left_join(community,trial0)
+#select the uhfcode, zipcode and services
+trial0 = Attempt_1 %>% select(UHFCODE,zipcode,`RWHAP Funded Services`) 
+
+#match via uhfcode
+trial = left_join(geo_community,trial0)
 trial
+
+plot(trial)
 
 ```
 
 
 ```{r}
-
+#separate the types of ryan white services
 trial = separate_rows(trial, `RWHAP Funded Services`, sep = "; ")
-Services = unique(trial$`RWHAP Funded Services`)
 
-counts = trial %>% group_by(id, zipcode, `RWHAP Funded Services`)%>% summarise(total_count = n())
+#find the unique types of service and their count
+trial_count = trial %>% group_by(UHFCODE, `RWHAP Funded Services`) %>% summarize(count = n())
+
+#replace na's with unknown service type
+trial_count =  replace(trial_count, is.na(trial_count), "Unknown")
+
+#unique sevices
+service_names = unique(trial_count$`RWHAP Funded Services`)
+```
+```{r}
 
 
-servplot = function(x,y,z){
-  ggplot(data = counts) + 
-     geom_sf(fill = `RWHAP Funded Services`)
-  
+```
+
+```{r plots} 
+#plot each service
+
+ggplot() + 
+  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[1] ), aes(fill = count),colour = NA) +
+  ggtitle(label = service_names[1])
+
+ggplot() + 
+  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[2] ), aes(fill = count)) +
+  ggtitle(label = service_names[2])
+
+ggplot() + 
+  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[3] ), aes(fill = count)) +
+  ggtitle(label = service_names[3])
+
+
+ggplot() + 
+  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[4] ), aes(fill = count)) +
+  ggtitle(label = service_names[4])
+
+```
+
+```{r}
+
+
+for (i in 1:length(k)) {
+  entry = service_counts %>% filter(UHFCODE == k[i])
+  result_list[[i]] = entry
 }
+
+
+service_maps = service_counts %>% group_by(UHFCODE) %>% summarise(Freq = sum(count))
   
+ggplot(service_maps) + 
+  geom_sf(fill = aes(Freq))
+
+service_counts <- trial %>%
+  group_by(UHFCODE, `RWHAP Funded Services`) %>%
+  summarise(count = n(), .groups = 'drop')
+
+ggplot(service_counts) +
+  geom_sf(aes(fill = count))
 
 
-map(Services, ~servplot("","",.x))
 ```
