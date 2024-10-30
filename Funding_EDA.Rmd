@@ -51,7 +51,7 @@ UHFCODE = c(rep(101,2),rep(102,4),rep(103,3),rep(104,6),rep(105,3),rep(106,3),re
   rep(501,3),rep(502,3),rep(503,1),rep(504,5))
 
 UHFCODE = as.character(UHFCODE)
-
+#every zipcode belongs in a UHF neighborhood, manually assign them
 zipcode = c(10463, 10471,
             10466, 10469, 10470, 10475,
             10458, 10467, 10468,
@@ -222,33 +222,140 @@ trial_count = trial %>% group_by(UHFCODE, `RWHAP Funded Services`) %>% summarize
 #replace na's with unknown service type
 trial_count =  replace(trial_count, is.na(trial_count), "Unknown")
 
-#unique sevices
+#unique service
 service_names = unique(trial_count$`RWHAP Funded Services`)
 ```
+
 ```{r}
+#fix gaps in map
 
+#so i need make an entry where every uhfcode has every service, but their value of count is 0... or NA?...i count them in the future so...maybe I can make it count based on the vector of services?
 
+trial_count
+
+unique_uhf = unique(trial_count$UHFCODE)
+
+complete_df = expand.grid(UHFCODE = unique_uhf, 
+`RWHAP Funded Services` = service_names)
+
+complete_df$UHFCODE = as.character(complete_df$UHFCODE)
+
+complete_df$`RWHAP Funded Services` = as.character(complete_df$`RWHAP Funded Services`)
+
+complete_df = left_join(geo_community,complete_df)
+
+final_df = left_join(complete_df,trial_count)
+
+final_df$count[is.na(final_df$count)] <- 0
 ```
 
 ```{r plots} 
 #plot each service
+#why cant ggplot plot in loops TT n TT
+
+final_df %>% filter(`RWHAP Funded Services` == service_names[1])
 
 ggplot() + 
-  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[1] ), aes(fill = count),colour = NA) +
+  geom_sf(data = final_df %>% filter(`RWHAP Funded Services` == service_names[1]), aes(fill = count),colour = NA) +
   ggtitle(label = service_names[1])
 
 ggplot() + 
-  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[2] ), aes(fill = count)) +
+  geom_sf(data = final_df %>% filter(`RWHAP Funded Services` == service_names[2]), aes(fill = count),colour = NA) +
+  ggtitle(label = service_names[2])
+
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[2] ), aes(fill = count)) +
   ggtitle(label = service_names[2])
 
 ggplot() + 
-  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[3] ), aes(fill = count)) +
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[3] ), aes(fill = count)) +
   ggtitle(label = service_names[3])
 
 
 ggplot() + 
-  geom_sf(data = subset(trial_count,`RWHAP Funded Services` == service_names[4] ), aes(fill = count)) +
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[4] ), aes(fill = count)) +
   ggtitle(label = service_names[4])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[5] ), aes(fill = count)) +
+  ggtitle(label = service_names[5])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[6] ), aes(fill = count)) +
+  ggtitle(label = service_names[6])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[7] ), aes(fill = count)) +
+  ggtitle(label = service_names[7])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[8] ), aes(fill = count)) +
+  ggtitle(label = service_names[8])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[9] ), aes(fill = count)) +
+  ggtitle(label = service_names[9])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[10] ), aes(fill = count)) +
+  ggtitle(label = service_names[10])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[11] ), aes(fill = count)) +
+  ggtitle(label = service_names[11])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[12] ), aes(fill = count)) +
+  ggtitle(label = service_names[12])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[13] ), aes(fill = count)) +
+  ggtitle(label = service_names[13])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[14] ), aes(fill = count)) +
+  ggtitle(label = service_names[14])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[15] ), aes(fill = count)) +
+  ggtitle(label = service_names[15])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[16] ), aes(fill = count)) +
+  ggtitle(label = service_names[16])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[17] ), aes(fill = count)) +
+  ggtitle(label = service_names[17])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[18] ), aes(fill = count)) +
+  ggtitle(label = service_names[18])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[19] ), aes(fill = count)) +
+  ggtitle(label = service_names[19])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[20] ), aes(fill = count)) +
+  ggtitle(label = service_names[20])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[21] ), aes(fill = count)) +
+  ggtitle(label = service_names[21])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[22] ), aes(fill = count)) +
+  ggtitle(label = service_names[22])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[23] ), aes(fill = count)) +
+  ggtitle(label = service_names[23])
+
+ggplot() + 
+  geom_sf(data = subset(final_df,`RWHAP Funded Services` == service_names[24] ), aes(fill = count)) +
+  ggtitle(label = service_names[24])
 
 ```
 
